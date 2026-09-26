@@ -1,0 +1,543 @@
+<title>mAhgic</title>
+<meta name="description" content="How much battery is left in your battery? mAhgic shows the real battery health of your Mac, iPhone and iPad. Free for macOS.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;700;800&display=swap">
+<style>
+  /* One deliberate look: battery blister-pack yellow, ink black, charge green. */
+  :root {
+    color-scheme: light;
+    --volt: #ffd23f;
+    --volt-2: #ffe27a;
+    --ink: #17171b;
+    --ink-2: #3a3a40;
+    --white: #fffdf6;
+    --juice: #2fcf6f;
+    --juice-dark: #1c9e51;
+    --mid: #ffb627;
+    --low: #ff5a36;
+    --level: 100;
+    --level-color: var(--juice);
+    --display: "Bungee", "Arial Black", Impact, sans-serif;
+    --body: "Rubik", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--volt);
+    color: var(--ink);
+    font: 400 18px/1.55 var(--body);
+    padding-inline: 16px;
+  }
+  a { color: inherit; }
+  a:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+  img { max-width: 100%; display: block; }
+  p { margin: 0; }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  .wrap { max-width: 1080px; margin-inline: auto; }
+
+  /* ---------- Reusable battery shape ---------- */
+  .batt {
+    --fill: 100;
+    --color: var(--juice);
+    position: relative;
+    border: 6px solid var(--ink);
+    border-radius: 18px;
+    padding: 6px;
+    background: var(--white);
+  }
+  .batt::after { /* the + terminal */
+    content: ""; position: absolute; right: -20px; top: 50%; transform: translateY(-50%);
+    width: 14px; height: 38%; background: var(--ink); border-radius: 0 7px 7px 0;
+  }
+  .batt .juice {
+    height: 100%; width: calc(var(--fill) * 1%); max-width: 100%;
+    background: repeating-linear-gradient(90deg, var(--color) 0 calc(20% - 5px), transparent calc(20% - 5px) 20%);
+    border-radius: 9px;
+  }
+  .batt.vertical::after { right: auto; top: -18px; left: 50%; transform: translateX(-50%); width: 38%; height: 12px; border-radius: 6px 6px 0 0; }
+
+  /* ---------- Scroll gauge (drains while you read) ---------- */
+  .gauge {
+    position: fixed; right: 18px; top: 50%; transform: translateY(-50%);
+    z-index: 10; display: grid; justify-items: center; gap: 8px;
+  }
+  .gauge .batt { width: 44px; height: 150px; border-width: 4px; border-radius: 12px; padding: 4px; }
+  .gauge .batt.vertical::after { top: -12px; height: 8px; }
+  .gauge .juice-v {
+    position: absolute; left: 4px; right: 4px; bottom: 4px;
+    height: calc((100% - 8px) * var(--level) / 100);
+    background: var(--level-color); border-radius: 7px;
+    transition: height .25s ease-out, background-color .25s;
+  }
+  .gauge b { font: 400 15px/1 var(--display); background: var(--ink); color: var(--white); padding: 5px 7px; border-radius: 8px; min-width: 56px; text-align: center; }
+
+  /* ---------- Header ---------- */
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 20px; padding-right: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand img { width: 40px; height: 40px; }
+  .brand span { font: 800 28px/1 var(--body); letter-spacing: -.02em; }
+  .brand span b { color: var(--juice-dark); font-weight: 800; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    background: var(--ink); color: var(--volt);
+    font: 700 16px/1 var(--body); padding: 13px 20px; border-radius: 999px;
+  }
+  .pill:hover { background: #000; }
+  .head-right { display: flex; align-items: center; gap: 12px; }
+  .lang { display: inline-flex; border: 3px solid var(--ink); border-radius: 999px; overflow: hidden; }
+  .lang button {
+    border: 0; background: transparent; color: var(--ink); cursor: pointer;
+    font: 800 14px/1 var(--body); padding: 10px 13px;
+  }
+  .lang button[aria-pressed="true"] { background: var(--ink); color: var(--volt); }
+  .lang button:focus-visible { outline: 3px solid var(--juice-dark); outline-offset: -3px; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr); gap: 40px; align-items: center;
+    padding-block: 36px 70px; padding-right: 60px;
+  }
+  .hero h1 { font: 400 clamp(40px, 6.6vw, 80px)/1.0 var(--display); letter-spacing: -.01em; }
+  .hero .lede { margin-top: 22px; font-size: 21px; max-width: 30em; color: var(--ink-2); }
+  .hero .lede b { color: var(--ink); }
+  .big-batt { margin-top: 34px; width: min(560px, 92%); height: 128px; }
+  .big-batt .juice { position: relative; }
+  .big-batt .label {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between;
+    padding-inline: 22px; pointer-events: none;
+  }
+  .big-batt .pct { font: 400 58px/1 var(--display); color: var(--ink); text-shadow: 0 2px 0 var(--white); }
+  .big-batt .who { font: 700 14px/1.25 var(--body); text-align: right; background: var(--white); padding: 6px 10px; border-radius: 10px; border: 2px solid var(--ink); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+  .pill.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 3px var(--ink); }
+  .pill.ghost:hover { background: var(--volt-2); }
+  .sticker {
+    justify-self: center; width: min(300px, 100%);
+    transform: rotate(3deg);
+    background: var(--white); padding: 12px 12px 16px; border-radius: 22px;
+    border: 4px solid var(--ink); box-shadow: 10px 12px 0 var(--ink);
+  }
+  .sticker img { border-radius: 12px; }
+  .sticker figcaption { margin-top: 10px; text-align: center; font: 700 15px/1.2 var(--body); }
+
+  /* ---------- Bands ---------- */
+  .band { margin-inline: -16px; padding: 90px 16px; }
+  .band .inner { max-width: 1080px; margin-inline: auto; padding-right: 60px; }
+  .band.ink { background: var(--ink); color: var(--white); }
+  .band.white { background: var(--white); }
+  .band h2 { font: 400 clamp(32px, 5vw, 58px)/1.02 var(--display); }
+  .band .intro { margin-top: 14px; font-size: 20px; max-width: 34em; }
+  .band.ink .intro { color: rgba(255, 253, 246, .75); }
+
+  /* Features: little batteries at different levels */
+  .perks { margin-top: 46px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+  .perk { background: #232329; border-radius: 22px; padding: 24px 24px 26px; display: grid; gap: 12px; align-content: start; }
+  .perk .mini { width: 74px; height: 34px; border-width: 4px; border-radius: 10px; padding: 3px; background: var(--ink); border-color: var(--white); }
+  .perk .mini::after { background: var(--white); right: -12px; width: 8px; }
+  .perk h3 { font: 800 22px/1.2 var(--body); color: var(--volt); }
+  .perk p { color: rgba(255, 253, 246, .78); font-size: 17px; }
+
+  /* History as a row of batteries */
+  .aging { margin-top: 50px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 18px; align-items: end; }
+  .age { display: grid; justify-items: center; gap: 12px; }
+  .age .batt { width: 76px; height: 150px; border-width: 5px; border-radius: 14px; padding: 5px; background: var(--white); }
+  .age .batt::after { top: -16px; height: 10px; }
+  .age .fill-v {
+    position: absolute; left: 5px; right: 5px; bottom: 5px;
+    height: calc((100% - 10px) * min(var(--fill), 100) / 100);
+    background: var(--color); border-radius: 8px;
+  }
+  .age b { font: 400 24px/1 var(--display); }
+  .age span { font: 500 15px/1.2 var(--body); color: var(--ink-2); text-align: center; }
+  .aging-note { margin-top: 28px; font-size: 17px; color: var(--ink-2); max-width: 40em; }
+  .aging-note b { color: var(--ink); }
+
+  /* Screens */
+  .screens { margin-top: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+  .screen { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 22px; align-items: center; background: var(--volt); border: 4px solid var(--ink); border-radius: 24px; padding: 20px; }
+  .screen img { border-radius: 12px; border: 3px solid var(--ink); }
+  .screen h3 { font: 400 26px/1.05 var(--display); }
+  .screen p { margin-top: 10px; font-size: 17px; color: var(--ink-2); }
+
+  /* Wi-Fi steps as battery segments */
+  .steps { margin-top: 44px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 6px solid var(--white); border-radius: 26px; overflow: hidden; position: relative; }
+  .step { padding: 28px 26px 30px; display: grid; gap: 10px; align-content: start; color: var(--ink); }
+  .step:nth-child(1) { background: var(--juice); }
+  .step:nth-child(2) { background: #58dd8c; border-left: 6px solid var(--white); }
+  .step:nth-child(3) { background: #8ae8b0; border-left: 6px solid var(--white); }
+  .step .n { font: 400 44px/1 var(--display); }
+  .step h3 { font: 800 21px/1.2 var(--body); }
+  .step p { font-size: 17px; }
+  .steps-cap { margin-top: 18px; color: rgba(255, 253, 246, .7); font-size: 16px; }
+
+  /* FAQ */
+  .qa { margin-top: 40px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  .q { border: 4px solid var(--ink); border-radius: 20px; padding: 20px 22px; background: var(--white); }
+  .q h3 { font: 800 19px/1.25 var(--body); }
+  .q p { margin-top: 8px; font-size: 16.5px; color: var(--ink-2); }
+  .q code { font: 700 15px/1 var(--body); background: var(--volt); padding: 1px 6px; border-radius: 6px; color: var(--ink); }
+
+  /* Recharge / download */
+  .recharge { padding-block: 96px 40px; display: grid; justify-items: center; text-align: center; gap: 18px; padding-right: 60px; }
+  .recharge h2 { font: 400 clamp(36px, 6vw, 72px)/1 var(--display); }
+  .recharge p { font-size: 20px; color: var(--ink-2); max-width: 30em; }
+  .dl {
+    position: relative; margin-top: 12px;
+    display: inline-flex; align-items: center; gap: 14px; text-decoration: none;
+    background: var(--ink); color: var(--volt);
+    border-radius: 20px; padding: 22px 38px 22px 30px;
+    font: 400 clamp(22px, 3vw, 30px)/1 var(--display);
+    box-shadow: 8px 10px 0 var(--juice-dark);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .dl::after { content: ""; position: absolute; right: -16px; top: 50%; transform: translateY(-50%); width: 14px; height: 40%; background: var(--ink); border-radius: 0 7px 7px 0; }
+  .dl:hover { transform: translate(-2px, -2px); box-shadow: 10px 12px 0 var(--juice-dark); }
+  .dl .bolt { color: var(--juice); }
+  .specs { font: 500 15px/1.4 var(--body); color: var(--ink-2); }
+
+  footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-block: 30px 40px; padding-right: 60px; border-top: 3px solid var(--ink); font: 500 15px/1.4 var(--body); }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; padding-right: 0; }
+    .top, .recharge, footer { padding-right: 0; }
+    .band .inner { padding-right: 0; }
+    .perks, .screens, .qa { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: 1fr; }
+    .step:nth-child(n+2) { border-left: 0; border-top: 6px solid var(--white); }
+    .aging { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .age .batt { width: 52px; height: 110px; }
+    .age b { font-size: 18px; }
+    .age span { font-size: 12px; }
+    .gauge { top: auto; bottom: 14px; transform: none; right: 14px; }
+    .gauge .batt { width: 30px; height: 84px; }
+    .gauge b { font-size: 12px; min-width: 44px; }
+  }
+  @media (max-width: 480px) {
+    .top .pill { display: none; }
+  }
+  @media (max-width: 560px) {
+    .screen { grid-template-columns: 1fr; }
+    .screen img { max-width: 220px; }
+    .big-batt { height: 96px; }
+    .big-batt .pct { font-size: 40px; }
+    .big-batt .who { font-size: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .gauge .juice-v, .dl { transition: none; }
+  }
+</style>
+
+<div class="gauge" aria-hidden="true">
+  <div class="batt vertical"><div class="juice-v"></div></div>
+  <b id="gauge-pct">100%</b>
+</div>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#top" aria-label="mAhgic home">
+      <img src="img/icon.png" alt="">
+      <span><b>mAh</b>gic</span>
+    </a>
+    <div class="head-right">
+      <div class="lang" role="group" aria-label="Language / Sprache">
+        <button type="button" data-lang="de" aria-pressed="false">DE</button>
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      </div>
+      <a class="pill" href="#recharge" data-i18n="nav.dl">Download free ⚡</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="hero">
+      <div>
+        <h1 data-i18n="hero.h1">How much battery is left in your battery?</h1>
+        <p class="lede" data-i18n="hero.lede">Batteries get tired. <b>mAhgic shows you exactly how tired</b> – for your Mac, and for your iPhone and iPad too. Free, tiny, and nothing leaves your Mac.</p>
+        <div class="batt big-batt" style="--fill: 82; --color: var(--juice)">
+          <div class="juice"></div>
+          <div class="label">
+            <span class="pct">82%</span>
+            <span class="who" data-i18n="hero.who">MacBook Air<br>after 2 years</span>
+          </div>
+        </div>
+        <div class="actions">
+          <a class="pill" href="#recharge" data-i18n="hero.cta1">Download for Mac ⚡</a>
+          <a class="pill ghost" href="#perks" data-i18n="hero.cta2">What it shows</a>
+        </div>
+      </div>
+      <figure class="sticker">
+        <img src="img/shot-mac-stats.png" width="276" height="538" data-i18n-alt="hero.alt" alt="The mAhgic window: a MacBook Air at 63 % charge and 82 % battery health, with tiles for capacity, cycles, temperature and power adapter.">
+        <figcaption data-i18n="hero.cap">Fits in a tiny window</figcaption>
+      </figure>
+    </div>
+  </main>
+</div>
+
+<section class="band ink" id="perks">
+  <div class="inner">
+    <h2 data-i18n="perks.h2">Everything about your battery. In one small window.</h2>
+    <p class="intro" data-i18n="perks.intro">Percent tells you how full the battery is right now. mAhgic tells you how big it still is.</p>
+    <div class="perks">
+      <article class="perk">
+        <div class="batt mini" style="--fill: 82; --color: var(--juice)"><div class="juice"></div></div>
+        <h3 data-i18n="p1.h">Real battery health</h3>
+        <p data-i18n="p1.p">See how much your battery can still hold compared to the day it was new.</p>
+      </article>
+      <article class="perk">
+        <div class="batt mini" style="--fill: 60; --color: var(--juice)"><div class="juice"></div></div>
+        <h3 data-i18n="p2.h">iPhone &amp; iPad, no cable</h3>
+        <p data-i18n="p2.p">Your iPhone and iPad show up by themselves when they're on the same Wi‑Fi as your Mac.</p>
+      </article>
+      <article class="perk">
+        <div class="batt mini" style="--fill: 40; --color: var(--mid)"><div class="juice"></div></div>
+        <h3 data-i18n="p3.h">Charge cycles</h3>
+        <p data-i18n="p3.p">How often the battery has been charged all the way, and how many cycles it's made for.</p>
+      </article>
+      <article class="perk">
+        <div class="batt mini" style="--fill: 100; --color: var(--juice)"><div class="juice"></div></div>
+        <h3 data-i18n="p4.h">Charging right now</h3>
+        <p data-i18n="p4.p">Watts going in or out, time until full or empty, the power adapter and the temperature.</p>
+      </article>
+      <article class="perk">
+        <div class="batt mini" style="--fill: 20; --color: var(--low)"><div class="juice"></div></div>
+        <h3 data-i18n="p5.h">Watch it get older</h3>
+        <p data-i18n="p5.p">mAhgic keeps a diary of every battery, month by month. Bring your coconutBattery history along.</p>
+      </article>
+      <article class="perk">
+        <div class="batt mini" style="--fill: 100; --color: var(--volt)"><div class="juice"></div></div>
+        <h3 data-i18n="p6.h">Stays on your Mac</h3>
+        <p data-i18n="p6.p">No account, no cloud, no tracking. Everything is saved on your Mac only.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="aging">
+  <div class="inner">
+    <h2 data-i18n="aging.h2">Batteries don't die. They shrink.</h2>
+    <p class="intro" data-i18n="aging.intro">Here's one MacBook Air, measured with mAhgic over two years:</p>
+    <div class="aging" role="list">
+      <div class="age" role="listitem"><div class="batt vertical" style="--fill: 101; --color: var(--juice)"><div class="fill-v"></div></div><b>101%</b><span data-i18n="a1">June 2024<br>brand new</span></div>
+      <div class="age" role="listitem"><div class="batt vertical" style="--fill: 97; --color: var(--juice)"><div class="fill-v"></div></div><b>97%</b><span data-i18n="a2">Oct 2024<br>20 cycles</span></div>
+      <div class="age" role="listitem"><div class="batt vertical" style="--fill: 94; --color: var(--juice)"><div class="fill-v"></div></div><b>94%</b><span data-i18n="a3">Aug 2025<br>80 cycles</span></div>
+      <div class="age" role="listitem"><div class="batt vertical" style="--fill: 87; --color: var(--juice)"><div class="fill-v"></div></div><b>87%</b><span data-i18n="a4">May 2026<br>250 cycles</span></div>
+      <div class="age" role="listitem"><div class="batt vertical" style="--fill: 82; --color: var(--mid)"><div class="fill-v"></div></div><b>82%</b><span data-i18n="a5">Sept 2026<br>326 cycles</span></div>
+    </div>
+    <p class="aging-note" data-i18n="aging.note">Below <b>80%</b> Apple recommends a battery service. mAhgic shows you when you're getting close – long before your Mac starts dying at lunchtime.</p>
+
+    <div class="screens">
+      <div class="screen">
+        <img src="img/shot-mac-stats.png" width="220" height="429" data-i18n-alt="s1.alt" alt="Stats view with charge and health rings and eight tiles." loading="lazy">
+        <div>
+          <h3 data-i18n="s1.h">Right now</h3>
+          <p data-i18n="s1.p">Charge, health, cycles, temperature and power at a glance.</p>
+        </div>
+      </div>
+      <div class="screen">
+        <img src="img/shot-mac-history.png" width="220" height="429" data-i18n-alt="s2.alt" alt="History view with a health chart falling from 101 % to 82 % and monthly averages." loading="lazy">
+        <div>
+          <h3 data-i18n="s2.h">Over time</h3>
+          <p data-i18n="s2.p">A chart and a list for every month, so you see the trend.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band ink" id="wifi">
+  <div class="inner">
+    <h2 data-i18n="wifi.h2">Check your iPhone without a cable.</h2>
+    <p class="intro" data-i18n="wifi.intro">Set it up once. After that your iPhone and iPad just appear in mAhgic.</p>
+    <div class="steps">
+      <div class="step">
+        <span class="n">1</span>
+        <h3 data-i18n="st1.h">Plug in once</h3>
+        <p data-i18n="st1.p">Connect the iPhone by cable and tap “Trust this Computer”.</p>
+      </div>
+      <div class="step">
+        <span class="n">2</span>
+        <h3 data-i18n="st2.h">Turn on Wi‑Fi</h3>
+        <p data-i18n="st2.p">In Finder, click the iPhone and turn on “Show this iPhone when on Wi‑Fi”.</p>
+      </div>
+      <div class="step">
+        <span class="n">3</span>
+        <h3 data-i18n="st3.h">Done</h3>
+        <p data-i18n="st3.p">Whenever both are on the same Wi‑Fi, mAhgic shows the iPhone's battery.</p>
+      </div>
+    </div>
+    <p class="steps-cap" data-i18n="wifi.cap">Our iPhone 16 Pro showed up in 0.3 seconds – at 103% health. New batteries often start a bit above 100%.</p>
+  </div>
+</section>
+
+<section class="band white" id="faq">
+  <div class="inner">
+    <h2 data-i18n="faq.h2">Quick answers</h2>
+    <div class="qa">
+      <div class="q">
+        <h3 data-i18n="q1.h">My Mac says it can't open the app.</h3>
+        <p data-i18n="q1.p">mAhgic isn't checked by Apple yet. Try opening it once, then go to <code>System Settings → Privacy &amp; Security</code> and click “Open Anyway”. You only do this once.</p>
+      </div>
+      <div class="q">
+        <h3 data-i18n="q2.h">Which Macs does it run on?</h3>
+        <p data-i18n="q2.p">Macs with Apple silicon (M1 and newer) and macOS 14 Sonoma or later.</p>
+      </div>
+      <div class="q">
+        <h3 data-i18n="q3.h">My iPhone doesn't show up.</h3>
+        <p data-i18n="q3.p">Make sure you did the three steps above and both devices are on the same Wi‑Fi. Unlocking the iPhone helps it wake up.</p>
+      </div>
+      <div class="q">
+        <h3 data-i18n="q4.h">Does it change anything?</h3>
+        <p data-i18n="q4.p">No. mAhgic only looks. It never changes settings on your Mac, iPhone or iPad.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <section class="recharge" id="recharge">
+    <h2 data-i18n="dl.h2">Running low? Recharge.</h2>
+    <p data-i18n="dl.p">Download mAhgic, unzip it and drag it into your Applications folder.</p>
+    <a class="dl" href="downloads/mAhgic-1.0.zip" data-i18n="dl.btn"><span class="bolt">⚡</span> Download mAhgic</a>
+    <p class="specs" data-i18n="dl.specs">Free · Version 1.0 · 1.8 MB · macOS 14+ · Apple silicon</p>
+  </section>
+
+  <footer>
+    <span>© 2026 mAhgic</span>
+    <span data-i18n="foot">mAh + magic ⚡ Not affiliated with Apple</span>
+  </footer>
+</div>
+
+<script>
+  // The side gauge drains from 100 % to 0 % as the page is scrolled.
+  (function () {
+    var root = document.documentElement;
+    var label = document.getElementById("gauge-pct");
+    function colorFor(level) {
+      if (level > 50) return "var(--juice)";
+      if (level > 20) return "var(--mid)";
+      return "var(--low)";
+    }
+    function update() {
+      var max = root.scrollHeight - window.innerHeight;
+      var ratio = max > 0 ? Math.min(Math.max(window.scrollY / max, 0), 1) : 0;
+      var level = Math.round(100 - ratio * 100);
+      root.style.setProperty("--level", level);
+      root.style.setProperty("--level-color", colorFor(level));
+      label.textContent = level + "%";
+    }
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    update();
+  })();
+</script>
+
+<script>
+  // German/English switch. English is in the markup; German lives here.
+  (function () {
+    var de = {
+      "nav.dl": "Gratis laden ⚡",
+      "hero.h1": "Wie viel Akku steckt noch in deinem Akku?",
+      "hero.lede": "Akkus werden müde. <b>mAhgic zeigt dir, wie müde genau</b> – für deinen Mac und auch für dein iPhone und iPad. Kostenlos, winzig, und nichts verlässt deinen Mac.",
+      "hero.who": "MacBook Air<br>nach 2 Jahren",
+      "hero.cta1": "Für den Mac laden ⚡",
+      "hero.cta2": "Was es zeigt",
+      "hero.cap": "Passt in ein winziges Fenster",
+      "hero.alt": "Das mAhgic-Fenster: ein MacBook Air mit 63 % Ladung und 82 % Akku-Gesundheit, dazu Kacheln für Kapazität, Zyklen, Temperatur und Netzteil.",
+      "perks.h2": "Alles über deinen Akku. In einem kleinen Fenster.",
+      "perks.intro": "Die Prozentanzeige sagt dir, wie voll der Akku gerade ist. mAhgic sagt dir, wie groß er noch ist.",
+      "p1.h": "Echte Akku-Gesundheit",
+      "p1.p": "Sieh, wie viel dein Akku noch fassen kann – verglichen mit dem Tag, an dem er neu war.",
+      "p2.h": "iPhone & iPad ohne Kabel",
+      "p2.p": "Dein iPhone und iPad tauchen von selbst auf, wenn sie im selben WLAN sind wie dein Mac.",
+      "p3.h": "Ladezyklen",
+      "p3.p": "Wie oft der Akku schon ganz geladen wurde – und für wie viele Zyklen er gebaut ist.",
+      "p4.h": "Was gerade passiert",
+      "p4.p": "Wie viel Watt rein- oder rausgehen, wie lange es bis voll oder leer dauert, welches Netzteil dran ist und wie warm der Akku ist.",
+      "p5.h": "Sieh ihm beim Altern zu",
+      "p5.p": "mAhgic führt Tagebuch über jeden Akku, Monat für Monat. Deinen coconutBattery-Verlauf nimmst du einfach mit.",
+      "p6.h": "Bleibt auf deinem Mac",
+      "p6.p": "Kein Konto, keine Cloud, kein Tracking. Alles wird nur auf deinem Mac gespeichert.",
+      "aging.h2": "Akkus sterben nicht. Sie schrumpfen.",
+      "aging.intro": "So sah ein MacBook Air aus, zwei Jahre lang mit mAhgic gemessen:",
+      "a1": "Juni 2024<br>ganz neu",
+      "a2": "Okt. 2024<br>20 Zyklen",
+      "a3": "Aug. 2025<br>80 Zyklen",
+      "a4": "Mai 2026<br>250 Zyklen",
+      "a5": "Sept. 2026<br>326 Zyklen",
+      "aging.note": "Unter <b>80%</b> empfiehlt Apple einen Akkutausch. mAhgic zeigt dir, wann es so weit ist – lange bevor dein Mac mittags schlappmacht.",
+      "s1.h": "Jetzt gerade",
+      "s1.p": "Ladung, Gesundheit, Zyklen, Temperatur und Leistung auf einen Blick.",
+      "s1.alt": "Übersicht mit Ringen für Ladung und Gesundheit und acht Kacheln.",
+      "s2.h": "Mit der Zeit",
+      "s2.p": "Ein Diagramm und eine Liste für jeden Monat, damit du den Verlauf siehst.",
+      "s2.alt": "Verlauf mit einem Diagramm, das von 101 % auf 82 % fällt, und Monatswerten darunter.",
+      "wifi.h2": "Check dein iPhone ohne Kabel.",
+      "wifi.intro": "Einmal einrichten. Danach tauchen iPhone und iPad einfach in mAhgic auf.",
+      "st1.h": "Einmal anstecken",
+      "st1.p": "Verbinde das iPhone per Kabel und tippe auf „Vertrauen“.",
+      "st2.h": "WLAN einschalten",
+      "st2.p": "Klick im Finder auf das iPhone und schalte die Option ein, es bei WLAN-Verbindung anzuzeigen.",
+      "st3.h": "Fertig",
+      "st3.p": "Sobald beide im selben WLAN sind, zeigt mAhgic den Akku deines iPhones.",
+      "wifi.cap": "Unser iPhone 16 Pro war in 0,3 Sekunden da – mit 103% Gesundheit. Neue Akkus starten oft etwas über 100%.",
+      "faq.h2": "Kurz gefragt",
+      "q1.h": "Mein Mac sagt, er kann die App nicht öffnen.",
+      "q1.p": "mAhgic ist noch nicht von Apple geprüft. Versuch einmal, die App zu öffnen, geh dann zu <code>Systemeinstellungen → Datenschutz &amp; Sicherheit</code> und klick auf „Dennoch öffnen“. Das musst du nur einmal machen.",
+      "q2.h": "Auf welchen Macs läuft es?",
+      "q2.p": "Auf Macs mit Apple Silicon (M1 und neuer) ab macOS 14 Sonoma.",
+      "q3.h": "Mein iPhone taucht nicht auf.",
+      "q3.p": "Geh die drei Schritte oben durch und prüf, ob beide Geräte im selben WLAN sind. Entsperr das iPhone, dann wacht es auf.",
+      "q4.h": "Verändert mAhgic etwas?",
+      "q4.p": "Nein. mAhgic schaut nur. Es ändert nie Einstellungen auf deinem Mac, iPhone oder iPad.",
+      "dl.h2": "Akku leer? Aufladen.",
+      "dl.p": "Lade mAhgic herunter, entpacke es und zieh es in deinen Programme-Ordner.",
+      "dl.btn": "<span class=\"bolt\">⚡</span> mAhgic laden",
+      "dl.specs": "Kostenlos · Version 1.0 · 1,8 MB · macOS 14+ · Apple Silicon",
+      "foot": "mAh + magic ⚡ Keine Verbindung zu Apple"
+    };
+
+    var textEls = Array.prototype.slice.call(document.querySelectorAll("[data-i18n]"));
+    var altEls = Array.prototype.slice.call(document.querySelectorAll("[data-i18n-alt]"));
+    var en = {};
+    textEls.forEach(function (el) { en[el.getAttribute("data-i18n")] = el.innerHTML; });
+    altEls.forEach(function (el) { en[el.getAttribute("data-i18n-alt")] = el.getAttribute("alt"); });
+    var buttons = Array.prototype.slice.call(document.querySelectorAll(".lang button"));
+
+    function apply(lang) {
+      var dict = lang === "de" ? de : en;
+      textEls.forEach(function (el) {
+        var v = dict[el.getAttribute("data-i18n")];
+        if (v != null) el.innerHTML = v;
+      });
+      altEls.forEach(function (el) {
+        var v = dict[el.getAttribute("data-i18n-alt")];
+        if (v != null) el.setAttribute("alt", v);
+      });
+      document.documentElement.lang = lang;
+      buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-lang") === lang)); });
+    }
+
+    function saved() {
+      try { return localStorage.getItem("mahgic-lang"); } catch (e) { return null; }
+    }
+    function save(lang) {
+      try { localStorage.setItem("mahgic-lang", lang); } catch (e) {}
+    }
+
+    var hash = (location.hash || "").replace("#", "");
+    var start = hash === "de" || hash === "en" ? hash
+      : saved() || ((navigator.language || "en").toLowerCase().indexOf("de") === 0 ? "de" : "en");
+    apply(start);
+
+    buttons.forEach(function (b) {
+      b.addEventListener("click", function () {
+        var lang = b.getAttribute("data-lang");
+        apply(lang);
+        save(lang);
+      });
+    });
+  })();
+</script>

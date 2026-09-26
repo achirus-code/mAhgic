@@ -1,0 +1,7 @@
+.DS_Store
+.build/
+build/
+*.xcodeproj/xcuserdata/
+.swiftpm/
+# The app zip is a build product; publish it as a GitHub release instead.
+website/downloads/
