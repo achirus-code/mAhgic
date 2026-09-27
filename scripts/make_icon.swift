@@ -1,8 +1,8 @@
 // Renders the mAhgic app icon into an .iconset folder.
 // usage: swift scripts/make_icon.swift <out.iconset> [preview.png]
 //
-// Motif: a chocolate-chip cookie with a bite taken out, sitting inside a green
-// battery-charge ring, with a lightning bolt in the middle.
+// Motif: a battery (82 % charged) with a heartbeat line across it – "battery health" –
+// plus a sparkle for the magic, on the battery-pack yellow of the website.
 import AppKit
 
 let outDir = URL(fileURLWithPath: CommandLine.arguments[1])
@@ -13,52 +13,20 @@ func rgb(_ hex: UInt32, _ a: CGFloat = 1) -> NSColor {
             blue: CGFloat(hex & 0xFF) / 255, alpha: a)
 }
 
-/// Deterministic pseudo-random numbers so every size renders the same icon.
-struct RNG {
-    var state: UInt64
-    mutating func next() -> CGFloat {
-        state = state &* 6364136223846793005 &+ 1442695040888963407
-        return CGFloat((state >> 33) % 10_000) / 10_000
-    }
-}
+let ink = rgb(0x17171B)
+let cream = rgb(0xFFFDF6)
 
-let center = CGPoint(x: 512, y: 500)
-let cookieRadius: CGFloat = 238
-
-/// Slightly wobbly circle so the cookie looks baked, not drawn with a compass.
-func blob(center c: CGPoint, radius r: CGFloat, wobble: CGFloat, seed: UInt64, points n: Int = 48) -> NSBezierPath {
-    var rng = RNG(state: seed)
-    let offsets = (0..<n).map { _ in (rng.next() - 0.5) * 2 * wobble }
-    let pts = (0..<n).map { i -> CGPoint in
-        let a = CGFloat(i) / CGFloat(n) * 2 * .pi
-        let rr = r + offsets[i]
-        return CGPoint(x: c.x + cos(a) * rr, y: c.y + sin(a) * rr)
-    }
-    let path = NSBezierPath()
-    for i in 0..<n {
-        let p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n]
-        if i == 0 { path.move(to: p1) }
-        let c1 = CGPoint(x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6)
-        let c2 = CGPoint(x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6)
-        path.curve(to: p2, controlPoint1: c1, controlPoint2: c2)
-    }
-    path.close()
-    return path
-}
-
-func circle(_ c: CGPoint, _ r: CGFloat) -> NSBezierPath {
-    NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
-}
-
-// Bite: three overlapping circles on the upper right edge of the cookie.
-let biteAngle: CGFloat = 38 * .pi / 180
-let biteCenters: [(CGFloat, CGFloat)] = [(-13, 64), (0, 70), (13, 64)]   // (degrees offset, radius)
-func biteCircles() -> [(CGPoint, CGFloat)] {
-    biteCenters.map { off, r in
-        let a = biteAngle + off * .pi / 180
-        let d = cookieRadius + 10
-        return (CGPoint(x: center.x + cos(a) * d, y: center.y + sin(a) * d), r)
-    }
+/// Four-pointed sparkle centred at `c`.
+func sparkle(_ c: CGPoint, _ r: CGFloat) -> NSBezierPath {
+    let p = NSBezierPath()
+    let k = r * 0.22
+    p.move(to: CGPoint(x: c.x, y: c.y + r))
+    p.curve(to: CGPoint(x: c.x + r, y: c.y), controlPoint1: CGPoint(x: c.x + k, y: c.y + k), controlPoint2: CGPoint(x: c.x + k, y: c.y + k))
+    p.curve(to: CGPoint(x: c.x, y: c.y - r), controlPoint1: CGPoint(x: c.x + k, y: c.y - k), controlPoint2: CGPoint(x: c.x + k, y: c.y - k))
+    p.curve(to: CGPoint(x: c.x - r, y: c.y), controlPoint1: CGPoint(x: c.x - k, y: c.y - k), controlPoint2: CGPoint(x: c.x - k, y: c.y - k))
+    p.curve(to: CGPoint(x: c.x, y: c.y + r), controlPoint1: CGPoint(x: c.x - k, y: c.y + k), controlPoint2: CGPoint(x: c.x - k, y: c.y + k))
+    p.close()
+    return p
 }
 
 func render(_ px: Int) -> Data {
@@ -75,153 +43,84 @@ func render(_ px: Int) -> Data {
     let bg = NSBezierPath(roundedRect: NSRect(x: 100, y: 100, width: 824, height: 824), xRadius: 185, yRadius: 185)
     NSGraphicsContext.saveGraphicsState()
     let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
     shadow.shadowBlurRadius = 22
     shadow.shadowOffset = NSSize(width: 0, height: -10)
     shadow.set()
-    rgb(0x1B2336).setFill()
+    rgb(0xFFC93A).setFill()
     bg.fill()
     NSGraphicsContext.restoreGraphicsState()
-    NSGradient(colors: [rgb(0x121826), rgb(0x2A3552)])!.draw(in: bg, angle: 90)
-    // Soft glow behind the cookie
+    NSGradient(colors: [rgb(0xFFB020), rgb(0xFFD84A), rgb(0xFFE17A)], atLocations: [0, 0.6, 1], colorSpace: .sRGB)!
+        .draw(in: bg, angle: 90)
+
+    // Everything in front of the background sits a little lower to balance the sparkles on top.
+    ctx.translateBy(x: 0, y: -52)
+
+    // --- Battery -------------------------------------------------------------
+    let body = NSRect(x: 196, y: 348, width: 560, height: 318)
+    let outline = NSBezierPath(roundedRect: body, xRadius: 70, yRadius: 70)
     NSGraphicsContext.saveGraphicsState()
-    bg.addClip()
-    NSGradient(colors: [rgb(0x57D68A, 0.22), rgb(0x57D68A, 0)])!
-        .draw(fromCenter: center, radius: 0, toCenter: center, radius: 400, options: [])
+    let batteryShadow = NSShadow()
+    batteryShadow.shadowColor = rgb(0x8A5200, 0.35)
+    batteryShadow.shadowBlurRadius = 18
+    batteryShadow.shadowOffset = NSSize(width: 0, height: -12)
+    batteryShadow.set()
+    cream.setFill()
+    outline.fill()
     NSGraphicsContext.restoreGraphicsState()
+    outline.lineWidth = 40
+    ink.setStroke()
+    outline.stroke()
+    // + terminal
+    ink.setFill()
+    NSBezierPath(roundedRect: NSRect(x: 776, y: 440, width: 52, height: 134), xRadius: 22, yRadius: 22).fill()
 
-    // --- Charge ring (80 %) --------------------------------------------------
-    let ringRadius: CGFloat = 318
-    let track = NSBezierPath()
-    track.appendArc(withCenter: center, radius: ringRadius, startAngle: 0, endAngle: 360)
-    track.lineWidth = 40
-    rgb(0xFFFFFF, 0.10).setStroke()
-    track.stroke()
+    // Charge level (82 %)
+    let inner = body.insetBy(dx: 46, dy: 46)
+    let level = NSRect(x: inner.minX, y: inner.minY, width: inner.width * 0.82, height: inner.height)
+    NSGradient(colors: [rgb(0x3FE081), rgb(0x22B45E)])!
+        .draw(in: NSBezierPath(roundedRect: level, xRadius: 30, yRadius: 30), angle: -90)
 
-    let arc = NSBezierPath()
-    arc.appendArc(withCenter: center, radius: ringRadius, startAngle: 90, endAngle: 90 - 0.8 * 360, clockwise: true)
-    arc.lineWidth = 40
-    arc.lineCapStyle = .round
+    // Heartbeat line across the battery
+    let midY = body.midY
+    let pulse = NSBezierPath()
+    pulse.move(to: CGPoint(x: inner.minX + 8, y: midY))
+    pulse.line(to: CGPoint(x: 356, y: midY))
+    pulse.line(to: CGPoint(x: 398, y: midY + 58))
+    pulse.line(to: CGPoint(x: 452, y: midY - 104))
+    pulse.line(to: CGPoint(x: 512, y: midY + 118))
+    pulse.line(to: CGPoint(x: 560, y: midY - 30))
+    pulse.line(to: CGPoint(x: 588, y: midY))
+    pulse.line(to: CGPoint(x: inner.maxX - 8, y: midY))
+    pulse.lineCapStyle = .round
+    pulse.lineJoinStyle = .round
+    // dark halo so the line reads on green and cream alike
+    pulse.lineWidth = 46
+    ink.setStroke()
+    pulse.stroke()
+    pulse.lineWidth = 22
+    cream.setStroke()
+    pulse.stroke()
+
+    // --- Magic sparkles ------------------------------------------------------
     NSGraphicsContext.saveGraphicsState()
-    let ringGlow = NSShadow()
-    ringGlow.shadowColor = rgb(0x4CD37E, 0.55)
-    ringGlow.shadowBlurRadius = 18
-    ringGlow.set()
-    rgb(0x49C874).setStroke()
-    arc.stroke()
+    let glow = NSShadow()
+    glow.shadowColor = rgb(0xFFFFFF, 0.9)
+    glow.shadowBlurRadius = 16
+    glow.set()
+    cream.setFill()
+    sparkle(CGPoint(x: 760, y: 766), 88).fill()
+    sparkle(CGPoint(x: 648, y: 820), 38).fill()
     NSGraphicsContext.restoreGraphicsState()
-    // highlight gradient along the ring
-    NSGraphicsContext.saveGraphicsState()
-    let arcOutline = NSBezierPath(cgPath: arc.cgPath.copy(strokingWithWidth: 40, lineCap: .round, lineJoin: .round, miterLimit: 10))
-    arcOutline.addClip()
-    NSGradient(colors: [rgb(0x8AF0A8), rgb(0x2FAE5E)])!.draw(in: arcOutline, angle: -60)
-    NSGraphicsContext.restoreGraphicsState()
-
-    // --- Cookie ---------------------------------------------------------------
-    let cookie = blob(center: center, radius: cookieRadius, wobble: 5, seed: 7, points: 22)
-    // The cookie is drawn into its own transparency layer so the bite can be erased
-    // (destination-out) without touching the background; the drop shadow is applied
-    // to the finished, bitten cookie.
-    NSGraphicsContext.saveGraphicsState()
-    let cookieShadow = NSShadow()
-    cookieShadow.shadowColor = NSColor.black.withAlphaComponent(0.5)
-    cookieShadow.shadowBlurRadius = 26
-    cookieShadow.shadowOffset = NSSize(width: 0, height: -12)
-    cookieShadow.set()
-    ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-    rgb(0xC98A3E).setFill()
-    cookie.fill()
-
-    NSGraphicsContext.saveGraphicsState()
-    cookie.addClip()
-    // baked body: light top-left, darker rim
-    NSGradient(colors: [rgb(0xF2C27A), rgb(0xDDA05A), rgb(0xB8762F)], atLocations: [0, 0.55, 1],
-               colorSpace: .sRGB)!
-        .draw(fromCenter: CGPoint(x: center.x - 60, y: center.y + 70), radius: 0,
-              toCenter: center, radius: cookieRadius + 10, options: [])
-    // crumbs / texture
-    var rng = RNG(state: 42)
-    for _ in 0..<140 {
-        let a = rng.next() * 2 * .pi, d = sqrt(rng.next()) * (cookieRadius - 10)
-        let p = CGPoint(x: center.x + cos(a) * d, y: center.y + sin(a) * d)
-        let r = 3 + rng.next() * 6
-        (rng.next() > 0.5 ? rgb(0xFFE0A8, 0.35) : rgb(0x9A5E22, 0.30)).setFill()
-        circle(p, r).fill()
-    }
-    // rim darkening
-    let rim = blob(center: center, radius: cookieRadius - 4, wobble: 5, seed: 7, points: 22)
-    rim.lineWidth = 14
-    rgb(0x9C6127, 0.45).setStroke()
-    rim.stroke()
-
-    // chocolate chips (keep the middle free for the bolt)
-    let chips: [(CGFloat, CGFloat, CGFloat)] = [   // (angle°, distance, size)
-        (150, 160, 32), (205, 178, 30), (245, 150, 34), (290, 190, 27),
-        (330, 150, 30), (112, 190, 26), (0, 185, 22), (175, 205, 18),
-    ]
-    for (i, chip) in chips.enumerated() {
-        let a = chip.0 * .pi / 180
-        let p = CGPoint(x: center.x + cos(a) * chip.1, y: center.y + sin(a) * chip.1)
-        let shape = blob(center: p, radius: chip.2, wobble: chip.2 * 0.22, seed: UInt64(100 + i), points: 9)
-        NSGraphicsContext.saveGraphicsState()
-        let chipShadow = NSShadow()
-        chipShadow.shadowColor = rgb(0x6B3A12, 0.6)
-        chipShadow.shadowBlurRadius = 4
-        chipShadow.shadowOffset = NSSize(width: 0, height: -3)
-        chipShadow.set()
-        rgb(0x3B2012).setFill()
-        shape.fill()
-        NSGraphicsContext.restoreGraphicsState()
-        // glossy highlight
-        rgb(0x8A5A3A, 0.8).setFill()
-        circle(CGPoint(x: p.x - chip.2 * 0.3, y: p.y + chip.2 * 0.3), chip.2 * 0.22).fill()
-    }
-    NSGraphicsContext.restoreGraphicsState()   // cookie clip
-
-    // bite edge: darker baked crumb line around the bite
-    for (c, r) in biteCircles() {
-        NSGraphicsContext.saveGraphicsState()
-        cookie.addClip()
-        let edge = circle(c, r + 3)
-        edge.lineWidth = 10
-        rgb(0xA8692A, 0.9).setStroke()
-        edge.stroke()
-        NSGraphicsContext.restoreGraphicsState()
-    }
-    ctx.setBlendMode(.destinationOut)
-    NSColor.black.setFill()
-    for (c, r) in biteCircles() { circle(c, r).fill() }
-    ctx.setBlendMode(.normal)
-    ctx.endTransparencyLayer()
-    NSGraphicsContext.restoreGraphicsState()   // cookie shadow
-
-    // --- Lightning bolt -------------------------------------------------------
-    let bolt = NSBezierPath()
-    let o = CGPoint(x: center.x, y: center.y)
-    bolt.move(to: CGPoint(x: o.x + 38, y: o.y + 150))
-    bolt.line(to: CGPoint(x: o.x - 92, y: o.y - 12))
-    bolt.line(to: CGPoint(x: o.x - 6, y: o.y - 12))
-    bolt.line(to: CGPoint(x: o.x - 40, y: o.y - 150))
-    bolt.line(to: CGPoint(x: o.x + 94, y: o.y + 28))
-    bolt.line(to: CGPoint(x: o.x + 10, y: o.y + 28))
-    bolt.close()
-    bolt.lineJoinStyle = .round
-    NSGraphicsContext.saveGraphicsState()
-    let boltShadow = NSShadow()
-    boltShadow.shadowColor = rgb(0x3B2012, 0.7)
-    boltShadow.shadowBlurRadius = 12
-    boltShadow.shadowOffset = NSSize(width: 0, height: -5)
-    boltShadow.set()
-    rgb(0xFFFFFF).setFill()
-    bolt.fill()
-    NSGraphicsContext.restoreGraphicsState()
-    NSGraphicsContext.saveGraphicsState()
-    bolt.addClip()
-    NSGradient(colors: [rgb(0xFFFFFF), rgb(0xFFF1C9)])!.draw(in: bolt, angle: -90)
-    NSGraphicsContext.restoreGraphicsState()
-    bolt.lineWidth = 9
-    rgb(0x5A3316, 0.85).setStroke()
-    bolt.stroke()
+    ink.setStroke()
+    let big = sparkle(CGPoint(x: 760, y: 766), 88)
+    big.lineWidth = 12
+    big.lineJoinStyle = .round
+    big.stroke()
+    let small = sparkle(CGPoint(x: 648, y: 820), 38)
+    small.lineWidth = 9
+    small.lineJoinStyle = .round
+    small.stroke()
 
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
